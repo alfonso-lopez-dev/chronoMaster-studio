@@ -1,0 +1,31 @@
+/* Personalización para ocultar scrollbar en presets */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
+/* Animaciones simples */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideIn { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
+.animate-slide-in { animation: slideIn 0.2s ease-out; }
+
+/* Drag and Drop Styles */
+.timer-card {
+    cursor: grab;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.timer-card:active {
+    cursor: grabbing;
+}
+.timer-card.dragging {
+    opacity: 0.5;
+    transform: scale(0.95);
+    border: 2px dashed #6366f1;
+}
+.timer-card.drag-over {
+    transform: scale(1.02);
+    box-shadow: 0 0 0 2px #6366f1;
+}

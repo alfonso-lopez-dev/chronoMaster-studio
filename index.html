@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChronoMaster Studio</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body class="min-h-screen bg-slate-900 text-slate-100 font-sans p-4 md:p-8 transition-colors duration-300">
+
+    <!-- Header -->
+    <header class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
+        <div class="flex items-center gap-3">
+            <div class="bg-indigo-600 p-3 rounded-xl shadow-lg shadow-indigo-500/20">
+                <i data-lucide="clock" class="text-white w-8 h-8"></i>
+            </div>
+            <div>
+                <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400">
+                    ChronoMaster
+                </h1>
+                <p class="text-slate-400 text-sm">Gestión de tiempo inteligente</p>
+            </div>
+        </div>
+        
+        <div class="flex items-center gap-2">
+            <button id="btn-new-timer" onclick="openAddModal()" class="group flex items-center gap-2 bg-slate-800 hover:bg-indigo-600 border border-slate-700 hover:border-indigo-500 transition-all px-6 py-3 rounded-full shadow-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700">
+                <i data-lucide="plus" class="w-5 h-5 group-hover:rotate-90 transition-transform"></i>
+                <span>Nuevo Cronómetro</span>
+                <span id="timer-count" class="bg-slate-900/50 px-2 py-0.5 rounded-full text-xs ml-1">0/5</span>
+            </button>
+
+            <!-- Info Tooltip -->
+            <div class="relative group">
+                <button class="p-3 text-slate-500 hover:text-indigo-400 transition-colors rounded-full hover:bg-slate-800/50 cursor-help">
+                    <i data-lucide="info" class="w-6 h-6"></i>
+                </button>
+                
+                <div class="absolute top-full right-0 mt-4 w-72 bg-slate-900/95 backdrop-blur-xl border border-slate-700 p-5 rounded-2xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform origin-top-right z-50 translate-y-2 group-hover:translate-y-0">
+                    <h4 class="text-indigo-400 font-bold mb-3 flex items-center gap-2 text-sm uppercase tracking-wider">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i> Reglas del Studio
+                    </h4>
+                    <ul class="space-y-3 text-sm text-slate-300">
+                        <li class="flex items-start gap-3">
+                            <div class="bg-slate-800 p-1.5 rounded-lg shrink-0 text-amber-400">
+                                <i data-lucide="layers" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <span class="block font-semibold text-white">Capacidad Aumentada</span>
+                                <span class="text-xs text-slate-400">Hasta <strong>4 Timers</strong> + <strong>1 Cronómetro</strong> (Total 5).</span>
+                            </div>
+                        </li>
+                        <li class="flex items-start gap-3">
+                            <div class="bg-slate-800 p-1.5 rounded-lg shrink-0 text-cyan-400">
+                                <i data-lucide="timer" class="w-4 h-4"></i>
+                            </div>
+                            <div>
+                                <span class="block font-semibold text-white">Enfoque Único</span>
+                                <span class="text-xs text-slate-400">Solo <strong>1 Cronómetro</strong> permitido a la vez.</span>
+                            </div>
+                        </li>
+                    </ul>
+                    <!-- Decorative Arrow -->
+                    <div class="absolute -top-2 right-5 w-4 h-4 bg-slate-900 border-l border-t border-slate-700 rotate-45"></div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Contenedor de Cronómetros -->
+    <div id="timers-grid" class="max-w-6xl mx-auto columns-1 md:columns-2 lg:columns-3 gap-6 space-y-6">
+        <!-- Los cronómetros se renderizarán aquí vía JS -->
+    </div>
+
+    <!-- Modal: Crear Nuevo -->
+    <div id="add-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+        <div class="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700 overflow-hidden animate-slide-in">
+            <div class="p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 id="modal-title" class="text-xl font-bold text-white">Configurar Cronómetro</h2>
+                    <button onclick="closeAddModal()" class="text-slate-400 hover:text-white" title="Cerrar ventana"><i data-lucide="x" class="w-6 h-6"></i></button>
+                </div>
+
+                <!-- Selector de Modo -->
+                <div class="flex bg-slate-900 p-1 rounded-lg mb-6">
+                    <button id="btn-mode-timer" onclick="setMode('timer')" class="flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow">
+                        Cuenta Regresiva
+                    </button>
+                    <button id="btn-mode-stopwatch" onclick="setMode('stopwatch')" class="flex-1 py-2 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-slate-400">
+                        Cronómetro
+                    </button>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-1">Etiqueta (Opcional)</label>
+                        <input type="text" id="input-label" placeholder="Ej: Pasta, Lavadora, Siesta..." class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500">
+                    </div>
+
+                    <div id="sound-config-container">
+                        <label class="block text-sm text-slate-400 mb-1">Sonido de Alarma</label>
+                        <div class="flex gap-2">
+                            <select id="input-sound" class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-indigo-500 appearance-none">
+                                <option value="classic">🔔 Beep Clásico</option>
+                                <option value="digital">🤖 Digital</option>
+                                <option value="soft">🍃 Suave (Zen)</option>
+                                <option value="arcade">🕹️ Arcade 8-bit</option>
+                                <option value="alarm">⏰ Despertador (Fuerte)</option>
+                                <option value="siren">🚨 Sirena</option>
+                                <option value="industrial">⚠️ Industrial</option>
+                            </select>
+                            <button onclick="previewSelectedSound()" class="px-4 py-2 bg-slate-700 hover:bg-indigo-600 text-white rounded-lg transition-colors" title="Escuchar sonido">
+                                <i data-lucide="volume-2" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="duration-inputs">
+                        <label class="block text-sm text-slate-400 mb-2">Duración</label>
+                        <div class="grid grid-cols-3 gap-2 text-center">
+                            <div>
+                                <input type="number" id="input-h" min="0" value="0" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-center text-xl font-bold focus:border-indigo-500 outline-none">
+                                <span class="text-xs text-slate-500 mt-1 block">Horas</span>
+                            </div>
+                            <div>
+                                <input type="number" id="input-m" min="0" max="59" value="5" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-center text-xl font-bold focus:border-indigo-500 outline-none">
+                                <span class="text-xs text-slate-500 mt-1 block">Min</span>
+                            </div>
+                            <div>
+                                <input type="number" id="input-s" min="0" max="59" value="0" class="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-center text-xl font-bold focus:border-indigo-500 outline-none">
+                                <span class="text-xs text-slate-500 mt-1 block">Seg</span>
+                            </div>
+                        </div>
+                        
+                        <!-- Presets Rápidos -->
+                        <div class="flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
+                            <button onclick="setPreset(1)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">1 min</button>
+                            <button onclick="setPreset(5)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">5 min</button>
+                            <button onclick="setPreset(10)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">10 min</button>
+                            <button onclick="setPreset(20)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">20 min</button>
+                            <button onclick="setPreset(30)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">30 min</button>
+                            <button onclick="setPreset(45)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">45 min</button>
+                            <button onclick="setPreset(60)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">60 min</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex gap-3">
+                    <button onclick="closeAddModal()" class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-colors">Cancelar</button>
+                    <button id="btn-save-timer" onclick="saveTimer()" class="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-colors">Comenzar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Confirmación de Reset -->
+    <div id="reset-modal" class="hidden fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-[60] animate-fade-in">
+        <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl shadow-2xl max-w-sm w-full animate-slide-in">
+            <div class="text-center mb-6">
+                <div class="mx-auto w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4">
+                    <i data-lucide="rotate-ccw" class="text-amber-500 w-8 h-8"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">¿Reiniciar Cronómetro?</h3>
+                <p class="text-slate-400 text-sm">Esta acción borrará el tiempo actual y todas las vueltas registradas. No se puede deshacer.</p>
+            </div>
+            <div class="flex gap-3">
+                <button onclick="closeResetModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl font-medium transition-colors text-slate-300">
+                    Cancelar
+                </button>
+                <button onclick="confirmReset()" class="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold shadow-lg shadow-amber-900/20 transition-colors">
+                    Sí, reiniciar
+                </button>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Scripts -->
+    <script src="js/app.js"></script>
+</body>
+</html>
