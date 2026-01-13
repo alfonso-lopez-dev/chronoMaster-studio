@@ -45,7 +45,7 @@
 
 ## 📸 Capturas
 
-![ChronoMaster Dashboard](assets/screenshot.png)
+![ChronoMaster Dashboard](assets/screenshot.png?v=2)
 
 ## 📄 Licencia
 
