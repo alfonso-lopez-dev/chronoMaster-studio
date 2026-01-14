@@ -78,20 +78,25 @@
 
     <!-- Modal: Crear Nuevo -->
     <div id="add-modal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-        <div class="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md border border-slate-700 overflow-hidden animate-slide-in">
+        <div class="bg-slate-800 rounded-2xl shadow-2xl w-full max-w-lg border border-slate-700 overflow-hidden animate-slide-in">
             <div class="p-6">
                 <div class="flex justify-between items-center mb-6">
-                    <h2 id="modal-title" class="text-xl font-bold text-white">Configurar Cronómetro</h2>
+                    <div class="flex items-center gap-2">
+                        <i data-lucide="clock" class="w-6 h-6 text-indigo-400"></i>
+                        <h2 id="modal-title" class="text-xl font-bold text-white">Configurar Cronómetro</h2>
+                    </div>
                     <button onclick="closeAddModal()" class="text-slate-400 hover:text-white" title="Cerrar ventana"><i data-lucide="x" class="w-6 h-6"></i></button>
                 </div>
 
                 <!-- Selector de Modo -->
                 <div class="flex bg-slate-900 p-1 rounded-lg mb-6">
-                    <button id="btn-mode-timer" onclick="setMode('timer')" class="flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow">
-                        Cuenta Regresiva
+                    <button id="btn-mode-timer" onclick="setMode('timer')" class="flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow flex items-center justify-center gap-2">
+                        <i data-lucide="hourglass" class="w-4 h-4"></i>
+                        <span>Cuenta Regresiva</span>
                     </button>
-                    <button id="btn-mode-stopwatch" onclick="setMode('stopwatch')" class="flex-1 py-2 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-slate-400">
-                        Cronómetro
+                    <button id="btn-mode-stopwatch" onclick="setMode('stopwatch')" class="flex-1 py-2 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:text-slate-400 flex items-center justify-center gap-2">
+                        <i data-lucide="watch" class="w-4 h-4"></i>
+                        <span>Cronómetro</span>
                     </button>
                 </div>
 
@@ -138,20 +143,26 @@
                         
                         <!-- Presets Rápidos -->
                         <div class="flex gap-2 mt-4 overflow-x-auto pb-2 scrollbar-hide">
-                            <button onclick="setPreset(1)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">1 min</button>
-                            <button onclick="setPreset(5)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">5 min</button>
-                            <button onclick="setPreset(10)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">10 min</button>
-                            <button onclick="setPreset(20)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">20 min</button>
-                            <button onclick="setPreset(30)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">30 min</button>
-                            <button onclick="setPreset(45)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">45 min</button>
-                            <button onclick="setPreset(60)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap">60 min</button>
+                            <button onclick="setPreset(1)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap transition-colors border border-slate-600 hover:border-indigo-500">1 min</button>
+                            <button onclick="setPreset(5)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap transition-colors border border-slate-600 hover:border-indigo-500">5 min</button>
+                            <button onclick="setPreset(10)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap transition-colors border border-slate-600 hover:border-indigo-500">10 min</button>
+                            <button onclick="setPreset(20)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap transition-colors border border-slate-600 hover:border-indigo-500">20 min</button>
+                            <button onclick="setPreset(30)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap transition-colors border border-slate-600 hover:border-indigo-500">30 min</button>
+                            <button onclick="setPreset(45)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap transition-colors border border-slate-600 hover:border-indigo-500">45 min</button>
+                            <button onclick="setPreset(60)" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-full text-xs whitespace-nowrap transition-colors border border-slate-600 hover:border-indigo-500">60 min</button>
                         </div>
                     </div>
                 </div>
 
                 <div class="mt-8 flex gap-3">
-                    <button onclick="closeAddModal()" class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-colors">Cancelar</button>
-                    <button id="btn-save-timer" onclick="saveTimer()" class="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-colors">Comenzar</button>
+                    <button onclick="closeAddModal()" class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-colors flex items-center justify-center gap-2">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                        <span>Cancelar</span>
+                    </button>
+                    <button id="btn-save-timer" onclick="saveTimer()" class="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-500/30 transition-colors flex items-center justify-center gap-2">
+                        <i data-lucide="check" class="w-4 h-4"></i>
+                        <span>Comenzar</span>
+                    </button>
                 </div>
             </div>
         </div>

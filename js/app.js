@@ -461,7 +461,7 @@ function renderTimers() {
 
                 <!-- Laps Area (Stopwatch Only) -->
                 ${isStopwatch ? `
-                <div class="bg-slate-950 rounded-lg mb-4 flex-1 flex flex-col border border-slate-800 overflow-hidden min-h-[140px]">
+                <div class="bg-slate-950 rounded-lg mb-4 flex-1 flex flex-col border border-slate-800 overflow-hidden min-h-[140px] max-h-[240px]">
                      <!-- Header Fijo -->
                      <div class="bg-slate-950 p-2 border-b border-slate-800 z-10 shadow-sm shrink-0">
                         <div class="flex justify-between text-[10px] text-slate-500 uppercase font-mono px-2">
@@ -512,7 +512,7 @@ function renderTimers() {
                         </button>
                         
                         ${isStopwatch ? `
-                        <button onclick="recordLap(${timer.id})" class="${controlBtnSize} rounded-full bg-slate-700 hover:bg-slate-600 text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed" ${!timer.isRunning ? 'disabled' : ''} title="Registrar Vuelta">
+                        <button onclick="recordLap(${timer.id})" class="${controlBtnSize} rounded-full bg-slate-700 hover:bg-slate-600 ${timer.isRunning ? 'text-cyan-400' : 'text-white'} transition-colors disabled:opacity-50 disabled:cursor-not-allowed" ${!timer.isRunning ? 'disabled' : ''} title="Registrar Vuelta">
                             <i data-lucide="flag" class="${iconSize}"></i>
                         </button>
                         ` : ''}
@@ -573,8 +573,15 @@ function recordLap(id) {
 
 // --- Manejo de Reset Seguro ---
 function initiateReset(id) {
-    timerToResetId = id;
-    document.getElementById('reset-modal').classList.remove('hidden');
+    const t = timers.find(x => x.id === id);
+    if (!t) return;
+
+    if (t.mode === 'stopwatch') {
+        timerToResetId = id;
+        document.getElementById('reset-modal').classList.remove('hidden');
+    } else {
+        resetTimer(id);
+    }
 }
 
 function closeResetModal() {
@@ -628,8 +635,8 @@ function deleteTimer(id) {
 // --- Lógica del Modal Add/Edit ---
 function openAddModal() {
     timerToEditId = null;
-    document.getElementById('modal-title').innerText = "Nuevo Cronómetro";
-    document.getElementById('btn-save-timer').innerText = "Comenzar";
+    // document.getElementById('modal-title').innerText = "Nuevo Cronómetro"; // Title is static now
+    document.getElementById('btn-save-timer').innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> <span>Comenzar</span>';
     
     document.getElementById('add-modal').classList.remove('hidden');
     // Reset fields
@@ -650,8 +657,10 @@ function openAddModal() {
     const btnTimer = document.getElementById('btn-mode-timer');
     const btnStopwatch = document.getElementById('btn-mode-stopwatch');
 
-    btnTimer.innerText = `Cuenta Regresiva (${timerCount})`;
-    btnStopwatch.innerText = `Cronómetro (${stopwatchCount})`;
+    btnTimer.innerHTML = `<i data-lucide="hourglass" class="w-4 h-4"></i> <span>Cuenta Regresiva (${timerCount})</span>`;
+    btnStopwatch.innerHTML = `<i data-lucide="watch" class="w-4 h-4"></i> <span>Cronómetro (${stopwatchCount})</span>`;
+    
+    lucide.createIcons();
 
     // Check if stopwatch limit reached (1 max)
     if (stopwatchCount >= 1) {
@@ -670,8 +679,9 @@ function editTimer(id) {
     if (!t || t.mode !== 'timer') return; // Safety check
     
     timerToEditId = id;
-    document.getElementById('modal-title').innerText = "Editar Temporizador";
-    document.getElementById('btn-save-timer').innerText = "Guardar Cambios";
+    // document.getElementById('modal-title').innerText = "Editar Temporizador"; // Title is static now
+    document.getElementById('btn-save-timer').innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> <span>Guardar Cambios</span>';
+    lucide.createIcons();
     document.getElementById('add-modal').classList.remove('hidden');
     
     // Populate fields
@@ -704,14 +714,16 @@ function setMode(mode) {
     const durInputs = document.getElementById('duration-inputs');
     const soundConfig = document.getElementById('sound-config-container');
 
+    const baseClass = "flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2";
+
     if (mode === 'timer') {
-        btnTimer.className = "flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-indigo-600 text-white shadow";
-        btnStop.className = "flex-1 py-2 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-slate-200";
+        btnTimer.className = `${baseClass} bg-indigo-600 text-white shadow`;
+        btnStop.className = `${baseClass} text-slate-400 hover:text-slate-200`;
         durInputs.style.display = 'block';
         soundConfig.style.display = 'block';
     } else {
-        btnStop.className = "flex-1 py-2 rounded-md text-sm font-medium transition-colors bg-cyan-600 text-slate-900 shadow";
-        btnTimer.className = "flex-1 py-2 rounded-md text-sm font-medium transition-colors text-slate-400 hover:text-slate-200";
+        btnStop.className = `${baseClass} bg-cyan-600 text-slate-900 shadow`;
+        btnTimer.className = `${baseClass} text-slate-400 hover:text-slate-200`;
         durInputs.style.display = 'none';
         soundConfig.style.display = 'none';
     }
