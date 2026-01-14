@@ -16,19 +16,49 @@
     <!-- Header -->
     <header class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center mb-10 gap-4">
         <div class="flex items-center gap-3">
-            <div class="bg-indigo-600 p-3 rounded-xl shadow-lg shadow-indigo-500/20">
+            <div id="app-logo" class="bg-indigo-600 p-3 rounded-xl shadow-lg shadow-indigo-500/20 transition-colors duration-500">
                 <i data-lucide="clock" class="text-white w-8 h-8"></i>
             </div>
             <div>
-                <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400">
+                <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-cyan-400 transition-all duration-500" id="app-title">
                     ChronoMaster
                 </h1>
                 <p class="text-slate-400 text-sm">Gestión de tiempo inteligente</p>
             </div>
         </div>
         
-        <div class="flex items-center gap-2">
-            <button id="btn-new-timer" onclick="openAddModal()" class="group flex items-center gap-2 bg-slate-800 hover:bg-indigo-600 border border-slate-700 hover:border-indigo-500 transition-all px-6 py-3 rounded-full shadow-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700">
+        <div class="flex items-center gap-3">
+             <!-- Status de Guardado (Disk) -->
+             <button id="btn-save-status" onclick="manualSave()" class="p-3 text-slate-600 hover:text-indigo-400 transition-all rounded-full hover:bg-slate-800/50 relative group" title="Estado de Guardado">
+                <i data-lucide="save" class="w-6 h-6"></i>
+                <!-- Status Dot -->
+                <span id="save-dot" class="absolute top-2 right-2 w-2.5 h-2.5 rounded-full bg-slate-600 border-2 border-slate-900 transition-colors"></span>
+            </button>
+
+             <!-- Selector de Temas -->
+             <div class="relative group">
+                <button class="p-3 text-slate-500 hover:text-indigo-400 transition-colors rounded-full hover:bg-slate-800/50" title="Cambiar Tema">
+                    <i data-lucide="palette" class="w-6 h-6"></i>
+                </button>
+                <div class="absolute top-full right-0 mt-4 w-40 bg-slate-900/95 backdrop-blur-xl border border-slate-700 p-2 rounded-xl shadow-2xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 transform origin-top-right z-50">
+                    <div class="space-y-1">
+                        <button onclick="changeTheme('default')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-sm text-slate-300 flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-indigo-500"></span> Default
+                        </button>
+                        <button onclick="changeTheme('fire')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-sm text-slate-300 flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-orange-500"></span> Fuego
+                        </button>
+                        <button onclick="changeTheme('forest')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-sm text-slate-300 flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-emerald-500"></span> Bosque
+                        </button>
+                        <button onclick="changeTheme('ocean')" class="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-sm text-slate-300 flex items-center gap-2">
+                            <span class="w-3 h-3 rounded-full bg-cyan-500"></span> Océano
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <button id="btn-new-timer" onclick="openAddModal()" class="group flex items-center gap-2 bg-slate-800 border border-slate-700 transition-all px-6 py-3 rounded-full shadow-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800 disabled:hover:border-slate-700">
                 <i data-lucide="plus" class="w-5 h-5 group-hover:rotate-90 transition-transform"></i>
                 <span>Nuevo Cronómetro</span>
                 <span id="timer-count" class="bg-slate-900/50 px-2 py-0.5 rounded-full text-xs ml-1">0/5</span>
@@ -173,7 +203,7 @@
         <div class="bg-slate-900 border border-slate-700 p-6 rounded-2xl shadow-2xl max-w-sm w-full animate-slide-in">
             <div class="text-center mb-6">
                 <div class="mx-auto w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4">
-                    <i data-lucide="rotate-ccw" class="text-amber-500 w-8 h-8"></i>
+                    <i id="icon-reset-modal" data-lucide="rotate-ccw" class="text-amber-500 w-8 h-8 transition-colors"></i>
                 </div>
                 <h3 class="text-xl font-bold text-white mb-2">¿Reiniciar Cronómetro?</h3>
                 <p class="text-slate-400 text-sm">Esta acción borrará el tiempo actual y todas las vueltas registradas. No se puede deshacer.</p>
@@ -182,7 +212,7 @@
                 <button onclick="closeResetModal()" class="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl font-medium transition-colors text-slate-300">
                     Cancelar
                 </button>
-                <button onclick="confirmReset()" class="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold shadow-lg shadow-amber-900/20 transition-colors">
+                <button id="btn-confirm-reset" onclick="confirmReset()" class="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl font-bold shadow-lg shadow-amber-900/20 transition-colors">
                     Sí, reiniciar
                 </button>
             </div>

@@ -1,0 +1,10 @@
+# Data local
+data.json
+
+# Python
+__pycache__/
+*.py[cod]
+
+# OS specific
+.DS_Store
+Thumbs.db

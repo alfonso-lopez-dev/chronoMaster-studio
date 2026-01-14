@@ -1,5 +1,13 @@
-// --- Estado Global ---
+// --- Configuración y Estado Global ---
 let timers = [];
+let activeAlarms = {}; // Map: timerId -> intervalId
+let timerToResetId = null;
+let timerToEditId = null; 
+let currentTheme = 'default';
+let isSaving = false;
+let pendingSave = false;
+
+// Configuración de nuevo timer por defecto
 let newTimerConfig = {
     mode: 'timer',
     label: '',
@@ -7,14 +15,43 @@ let newTimerConfig = {
     minutes: 5,
     seconds: 0
 };
-let activeAlarms = {}; // Map: timerId -> intervalId
-let timerToResetId = null;
-let timerToEditId = null; 
 
-// --- Drag & Drop State ---
-let draggedItem = null;
+// Worker para precisión en segundo plano
+const timerWorker = new Worker('js/timer-worker.js');
 
-// --- Audio Context ---
+// Definición de Temas
+const themes = {
+    'default': {
+        from: 'from-indigo-400', to: 'to-cyan-400',
+        logoBg: 'bg-indigo-600', shadow: 'shadow-indigo-500/20',
+        btnBg: 'bg-indigo-600', btnHover: 'hover:bg-indigo-500',
+        textAccent: 'text-indigo-400', ring: 'focus:border-indigo-500',
+        newBtnHoverBg: 'hover:bg-indigo-600', newBtnHoverBorder: 'hover:border-indigo-500'
+    },
+    'fire': {
+        from: 'from-orange-500', to: 'to-red-500',
+        logoBg: 'bg-orange-600', shadow: 'shadow-orange-500/20',
+        btnBg: 'bg-orange-600', btnHover: 'hover:bg-orange-500',
+        textAccent: 'text-orange-400', ring: 'focus:border-orange-500',
+        newBtnHoverBg: 'hover:bg-orange-600', newBtnHoverBorder: 'hover:border-orange-500'
+    },
+    'forest': {
+        from: 'from-emerald-400', to: 'to-green-600',
+        logoBg: 'bg-emerald-600', shadow: 'shadow-emerald-500/20',
+        btnBg: 'bg-emerald-600', btnHover: 'hover:bg-emerald-500',
+        textAccent: 'text-emerald-400', ring: 'focus:border-emerald-500',
+        newBtnHoverBg: 'hover:bg-emerald-600', newBtnHoverBorder: 'hover:border-emerald-500'
+    },
+    'ocean': {
+        from: 'from-cyan-400', to: 'to-blue-600',
+        logoBg: 'bg-cyan-600', shadow: 'shadow-cyan-500/20',
+        btnBg: 'bg-cyan-600', btnHover: 'hover:bg-cyan-500',
+        textAccent: 'text-cyan-400', ring: 'focus:border-cyan-500',
+        newBtnHoverBg: 'hover:bg-cyan-600', newBtnHoverBorder: 'hover:border-cyan-500'
+    }
+};
+
+// --- Audio Context & Sonidos ---
 const soundPresets = {
     'classic': (ctx) => {
         const osc = ctx.createOscillator();
@@ -163,7 +200,210 @@ function previewSelectedSound() {
     playAlarmSound(sound);
 }
 
-// --- Utilidades ---
+// --- API Client (Persistencia) ---
+const API_URL = 'http://localhost:8000/api/data';
+
+async function loadData() {
+    try {
+        const response = await fetch(API_URL);
+        if (!response.ok) throw new Error('Error de red');
+        const data = await response.json();
+        
+        let loadedTimers = [];
+        
+        // Soporte para estructura nueva { theme, timers } y antigua [timers]
+        if (Array.isArray(data)) {
+            loadedTimers = data;
+            currentTheme = 'default'; // Default para estructura antigua
+        } else if (data && data.timers) {
+            loadedTimers = data.timers;
+            currentTheme = data.theme || 'default';
+        }
+
+        applyTheme(currentTheme);
+        
+        // Lógica inteligente de tiempo (Background recovery)
+        const now = Date.now();
+        timers = loadedTimers.map(t => {
+            if (t.isRunning && !t.isFinished) {
+                const delta = now - t.lastTick;
+                if (t.mode === 'timer') {
+                    t.currentTime = Math.max(0, t.currentTime - delta);
+                    if (t.currentTime === 0) {
+                        t.isFinished = true;
+                        t.isRunning = false;
+                    }
+                } else {
+                    // Stopwatch
+                    t.currentTime += delta;
+                }
+                t.lastTick = now;
+            }
+            return t;
+        });
+        renderTimers();
+        updateSaveStatus('saved');
+        
+    } catch (e) {
+        console.error("No se pudo cargar del servidor local:", e);
+        updateSaveStatus('error');
+    }
+}
+
+async function saveData() {
+    if (isSaving) {
+        pendingSave = true;
+        return;
+    }
+    isSaving = true;
+    updateSaveStatus('saving');
+
+    const payload = {
+        theme: currentTheme,
+        timers: timers
+    };
+
+    try {
+        await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        
+        isSaving = false;
+        updateSaveStatus('saved');
+
+        // Si hubo cambios mientras guardábamos, guardar de nuevo inmediatamente
+        if (pendingSave) {
+            pendingSave = false;
+            saveData();
+        }
+    } catch (e) {
+        console.error("Error al guardar:", e);
+        isSaving = false;
+        updateSaveStatus('error');
+        // Reintentar en breve si falló? O dejar que el usuario reintente manualmente.
+        // Por seguridad, mantenemos pendingSave true si queremos persistencia agresiva, 
+        // pero para evitar bucles infinitos de error, mejor no auto-reintentar en error network.
+    }
+}
+
+function manualSave() {
+    saveData();
+    // Efecto visual forzado
+    const btn = document.getElementById('btn-save-status');
+    btn.classList.add('text-indigo-400', 'bg-slate-800');
+    setTimeout(() => {
+        btn.classList.remove('text-indigo-400', 'bg-slate-800');
+    }, 500);
+}
+
+function updateSaveStatus(status) {
+    const dot = document.getElementById('save-dot');
+    const btn = document.getElementById('btn-save-status');
+    
+    // Reset classes
+    dot.className = "absolute top-2 right-2 w-2.5 h-2.5 rounded-full transition-colors border-2 border-slate-900";
+    
+    if (status === 'saved') {
+        dot.classList.add('bg-emerald-500');
+        btn.classList.remove('animate-pulse');
+        btn.title = "Guardado exitoso";
+    } else if (status === 'saving') {
+        dot.classList.add('bg-amber-400');
+        btn.classList.add('animate-pulse');
+        btn.title = "Guardando...";
+    } else if (status === 'error') {
+        dot.classList.add('bg-rose-500');
+        btn.classList.remove('animate-pulse');
+        btn.title = "Error de conexión con server.py";
+    } else if (status === 'unsaved') {
+        dot.classList.add('bg-slate-400'); // Tenue
+        btn.title = "Cambios sin guardar";
+    }
+}
+
+// --- Notificaciones de Escritorio ---
+function requestNotificationPermission() {
+    if ("Notification" in window) {
+        Notification.requestPermission();
+    }
+}
+
+function showNotification(title, body) {
+    if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, {
+            body: body,
+            icon: 'assets/screenshot.png' // Fallback icon si no existe, no crítico
+        });
+    }
+}
+
+
+// --- Temas ---
+function changeTheme(themeName) {
+    currentTheme = themeName;
+    applyTheme(themeName);
+    saveData();
+}
+
+function applyTheme(themeName) {
+    const theme = themes[themeName] || themes['default'];
+    
+    // Aplicar a Título
+    const title = document.getElementById('app-title');
+    title.className = `text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r ${theme.from} ${theme.to} transition-all duration-500`;
+    
+    // Aplicar a Logo
+    const logo = document.getElementById('app-logo');
+    logo.className = `${theme.logoBg} p-3 rounded-xl shadow-lg ${theme.shadow} transition-colors duration-500`;
+
+    // Aplicar a Botones de Modales (Primary Actions)
+    const btnSave = document.getElementById('btn-save-timer');
+    // Mantenemos clases base y reemplazamos colores
+    btnSave.className = `flex-1 py-3 ${theme.btnBg} ${theme.btnHover} text-white rounded-xl font-bold shadow-lg ${theme.shadow} transition-colors flex items-center justify-center gap-2`;
+
+    const btnReset = document.getElementById('btn-confirm-reset');
+    // Para el reset, usamos el tema también para consistencia visual como pidió el usuario, 
+    // aunque usualmente es una acción destructiva. Opcionalmente podríamos mantenerlo en rojo/ambar si se prefiere.
+    // Usaremos el tema para uniformidad.
+    btnReset.className = `flex-1 py-2.5 ${theme.btnBg} ${theme.btnHover} text-white rounded-xl font-bold shadow-lg ${theme.shadow} transition-colors`;
+    
+    // Iconos de modales
+    const modalIcon = document.querySelector('#add-modal i.text-indigo-400');
+    if(modalIcon) modalIcon.className = `w-6 h-6 ${theme.textAccent}`;
+
+    const resetIcon = document.getElementById('icon-reset-modal');
+    if(resetIcon) resetIcon.className = `${theme.textAccent} w-8 h-8 transition-colors`;
+
+    // Actualizar inputs focus
+    const inputs = document.querySelectorAll('input, select');
+    inputs.forEach(input => {
+        // Remover clases de borde de color anteriores si existen y poner la nueva
+        input.classList.remove('focus:border-indigo-500', 'focus:border-orange-500', 'focus:border-emerald-500', 'focus:border-cyan-500');
+        input.classList.add(theme.ring.split(':')[1]); // Extraer solo la clase de color
+    });
+
+    // Aplicar a Botón Nuevo Timer (Hover effects)
+    const btnNew = document.getElementById('btn-new-timer');
+    if (btnNew) {
+        btnNew.classList.remove(
+            'hover:bg-indigo-600', 'hover:border-indigo-500',
+            'hover:bg-orange-600', 'hover:border-orange-500',
+            'hover:bg-emerald-600', 'hover:border-emerald-500',
+            'hover:bg-cyan-600', 'hover:border-cyan-500'
+        );
+        btnNew.classList.add(theme.newBtnHoverBg, theme.newBtnHoverBorder);
+    }
+
+    // Actualizar botón de modo activo si el modal está abierto
+    if (!document.getElementById('add-modal').classList.contains('hidden')) {
+        setMode(newTimerConfig.mode); 
+    }
+}
+
+
+// --- Utilidades de Tiempo ---
 function formatTime(ms, showMs = false) {
     if (ms < 0) ms = 0;
     const totalSeconds = Math.floor(ms / 1000);
@@ -199,13 +439,21 @@ function getProgress(timer) {
     return (timer.currentTime / timer.duration) * 100;
 }
 
-// --- Lógica del Ciclo de Vida ---
-function updateTimers() {
+// --- Lógica Principal del Worker ---
+timerWorker.onmessage = function(e) {
+    if (e.data === 'tick') {
+        updateTimersLogic();
+    }
+};
+
+function updateTimersLogic() {
     const now = Date.now();
     let shouldReRender = false;
+    let anyRunning = false;
 
     timers.forEach(timer => {
         if (timer.isRunning && !timer.isFinished) {
+            anyRunning = true;
             const delta = now - timer.lastTick;
             timer.lastTick = now;
 
@@ -218,6 +466,12 @@ function updateTimers() {
                         timer.isRunning = false;
                         shouldReRender = true;
                         startAlarmForTimer(timer.id);
+                        
+                        // Notificación de Escritorio
+                        showNotification("¡Tiempo Terminado!", `El timer "${timer.label}" ha finalizado.`);
+                        
+                        // Guardar estado finalizado
+                        saveData();
                     }
                 }
             } else {
@@ -225,14 +479,20 @@ function updateTimers() {
             }
         }
     });
-    
+
     if (shouldReRender) {
         renderTimers();
     } else {
         updateTimeDisplays();
     }
-    
-    requestAnimationFrame(updateTimers);
+
+    // Gestionar el worker: si no hay nada corriendo, pausar el worker para ahorrar recursos
+    // NOTA: Para mantener la precisión al reanudar, es mejor dejarlo o manejar el start/stop con cuidado.
+    // En este caso, lo dejamos correr si hay activos, pero si todos están pausados, podríamos pausar el worker.
+    if (!anyRunning) {
+        // Opcional: timerWorker.postMessage('stop'); 
+        // Pero para simplificar lógica de "toggle", lo dejamos activo o lo gestionamos en toggleTimer.
+    }
 }
 
 function updateTimeDisplays() {
@@ -265,15 +525,13 @@ function startAlarmForTimer(id) {
     
     const soundType = timer.sound || 'classic';
     
-    // Play sound immediately
     playAlarmSound(soundType);
     
-    // Set interval for this specific timer
     if (activeAlarms[id]) clearInterval(activeAlarms[id]);
     
     activeAlarms[id] = setInterval(() => {
         playAlarmSound(soundType);
-    }, 1500); // Repetir cada 1.5s
+    }, 1500);
 }
 
 function stopAlarmForTimer(id) {
@@ -283,161 +541,112 @@ function stopAlarmForTimer(id) {
     }
 }
 
-// --- Drag & Drop Handlers ---
+// --- Drag & Drop ---
+let draggedItem = null;
 function handleDragStart(e) {
     draggedItem = this;
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', this.dataset.id);
     this.classList.add('dragging');
 }
-
 function handleDragOver(e) {
-    if (e.preventDefault) {
-        e.preventDefault();
-    }
+    if (e.preventDefault) e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     return false;
 }
-
-function handleDragEnter(e) {
-    this.classList.add('drag-over');
-}
-
-function handleDragLeave(e) {
-    this.classList.remove('drag-over');
-}
-
+function handleDragEnter(e) { this.classList.add('drag-over'); }
+function handleDragLeave(e) { this.classList.remove('drag-over'); }
 function handleDrop(e) {
-    if (e.stopPropagation) {
-        e.stopPropagation();
-    }
+    if (e.stopPropagation) e.stopPropagation();
     this.classList.remove('drag-over');
-    
     const sourceId = parseInt(e.dataTransfer.getData('text/plain'));
     const targetId = parseInt(this.dataset.id);
-    
     if (sourceId !== targetId) {
         const sourceIndex = timers.findIndex(t => t.id === sourceId);
         const targetIndex = timers.findIndex(t => t.id === targetId);
-        
         if (sourceIndex > -1 && targetIndex > -1) {
-            // Swap logic
             const temp = timers[sourceIndex];
             timers.splice(sourceIndex, 1);
             timers.splice(targetIndex, 0, temp);
-            
             renderTimers();
+            saveData(); // Guardar nuevo orden
         }
     }
-    
     return false;
 }
-
 function handleDragEnd(e) {
     this.classList.remove('dragging');
-    // Clean up all drag-over classes
-    const items = document.querySelectorAll('.timer-card');
-    items.forEach(item => item.classList.remove('drag-over'));
+    document.querySelectorAll('.timer-card').forEach(item => item.classList.remove('drag-over'));
 }
 
-
-// --- Gestión de UI ---
+// --- UI Rendering ---
 function renderTimers() {
-    // Actualizar Contador y Botón "Nuevo"
     const countEl = document.getElementById('timer-count');
     const newBtn = document.getElementById('btn-new-timer');
     const count = timers.length;
     
     if (countEl) countEl.innerText = `${count}/5`;
-    
     if (newBtn) {
         if (count >= 5) {
             newBtn.setAttribute('disabled', 'true');
             newBtn.classList.add('opacity-50', 'cursor-not-allowed');
-            newBtn.title = "Límite máximo de 5 elementos alcanzado";
+            newBtn.title = "Límite máximo alcanzado";
         } else {
             newBtn.removeAttribute('disabled');
             newBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-            newBtn.title = "Crear un nuevo temporizador o cronómetro";
+            newBtn.title = "Crear nuevo";
         }
     }
 
     const container = document.getElementById('timers-grid');
-    
     if (timers.length === 0) {
-        // Remover layout de Grid para mostrar mensaje centrado correctamente
         container.className = 'max-w-6xl mx-auto gap-6 space-y-6 flex justify-center';
-        
         container.innerHTML = `
             <div class="w-full text-center py-20 opacity-50 border-2 border-dashed border-slate-700 rounded-2xl">
                 <i data-lucide="watch" class="mx-auto mb-4 w-12 h-12 text-slate-500"></i>
                 <p class="text-xl">No hay cronómetros activos</p>
-                <p class="text-sm mt-2">Crea uno nuevo para empezar a cocinar o trabajar.</p>
+                <p class="text-sm mt-2">Crea uno nuevo para empezar.</p>
             </div>`;
         lucide.createIcons();
         return;
     }
 
-    // Restaurar layout de Grid (Dashboard Style)
     container.className = 'max-w-6xl mx-auto gap-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 grid-flow-row-dense auto-rows-max';
-
     container.innerHTML = timers.map(timer => {
         const isStopwatch = timer.mode === 'stopwatch';
         const progress = getProgress(timer);
         
-        // --- Estilos Base ---
         let cardBg = isStopwatch ? 'bg-slate-900 border-cyan-900/50' : 'bg-slate-800 border-slate-700';
         let ringClass = '';
         let alarmEffects = '';
         
-        // --- Estado Alarma (Visual Fire Effect) ---
         if (timer.isFinished) {
             cardBg = 'bg-slate-900 border-rose-500';
             ringClass = 'ring-2 ring-rose-500';
-            // Efecto de "fuego" / resplandor intenso
             alarmEffects = 'shadow-[0_0_40px_rgba(244,63,94,0.6)] animate-pulse';
         }
 
         const progressColor = isStopwatch ? 'bg-cyan-500' : (progress < 20 ? 'bg-rose-500' : 'bg-emerald-500');
-        
-        // Grid Layout Logic: Cronómetro ocupa 2 filas (row-span-2)
         const gridClass = isStopwatch ? 'row-span-2 flex flex-col' : 'flex flex-col';
-        
-        const tagClass = isStopwatch 
-            ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-800' 
-            : 'bg-indigo-900 text-indigo-200';
-        
-        const playBtnClass = timer.isRunning 
-            ? 'bg-amber-500 hover:bg-amber-600' 
-            : (isStopwatch ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-emerald-500 hover:bg-emerald-600');
-        
+        const tagClass = isStopwatch ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-800' : 'bg-indigo-900 text-indigo-200';
+        const playBtnClass = timer.isRunning ? 'bg-amber-500 hover:bg-amber-600' : (isStopwatch ? 'bg-cyan-600 hover:bg-cyan-500' : 'bg-emerald-500 hover:bg-emerald-600');
         const playIcon = timer.isRunning ? 'pause' : 'play';
         const textColor = timer.isRunning ? 'text-white' : 'text-slate-400';
         
-        // --- Reducción de Tamaños (15-20%) ---
-        const displayFont = isStopwatch ? 'font-mono text-cyan-50' : 'font-mono text-white';
-        const displayTextSize = 'text-4xl'; 
-        const labelSize = 'text-base'; 
-        const iconSize = 'w-5 h-5';
-        const controlBtnSize = 'p-3'; 
-        const paddingClass = 'p-5'; 
-
         return `
         <div draggable="true" data-id="${timer.id}" class="timer-card relative overflow-hidden rounded-2xl ${cardBg} border shadow-xl transition-all hover:shadow-2xl ${ringClass} ${gridClass} ${alarmEffects}">
-            <!-- Barra de Progreso -->
             <div class="h-1.5 w-full bg-slate-950 shrink-0">
                 <div id="progress-${timer.id}" class="h-full transition-all duration-100 ease-linear ${progressColor}" style="width: ${progress}%"></div>
             </div>
-
-            <div class="${paddingClass} flex-1 flex flex-col">
+            <div class="p-5 flex-1 flex flex-col">
                 <div class="flex justify-between items-start mb-3 shrink-0">
                     <div>
-                        <h3 class="${labelSize} font-semibold text-slate-200 cursor-move" title="Arrastra para reordenar">${timer.label}</h3>
+                        <h3 class="text-base font-semibold text-slate-200 cursor-move" title="Arrastra para reordenar">${timer.label}</h3>
                         <span class="text-[10px] px-1.5 py-0.5 rounded-full ${tagClass}">
                             ${isStopwatch ? '⏱ Cronómetro' : '⏳ Timer'}
                         </span>
+                        ${!isStopwatch ? `<span class="text-xs text-slate-500 ml-1">(${formatTime(timer.duration)})</span>` : ''}
                     </div>
-                    
                     <div class="flex items-center">
                         ${!isStopwatch && !timer.isRunning && !timer.isFinished && timer.currentTime === timer.duration ? `
                         <button onclick="editTimer(${timer.id})" class="text-slate-500 hover:text-indigo-400 transition-colors p-1 mr-1" title="Editar">
@@ -449,28 +658,20 @@ function renderTimers() {
                         </button>
                     </div>
                 </div>
-
-                <!-- Display -->
-                <div id="display-${timer.id}" class="${displayTextSize} ${displayFont} font-bold tracking-wider text-center py-4 ${textColor}">
+                
+                <div id="display-${timer.id}" class="text-4xl ${isStopwatch ? 'font-mono text-cyan-50' : 'font-mono text-white'} font-bold tracking-wider text-center py-4 ${textColor}">
                     ${timer.isFinished ? `<span class="text-rose-500 animate-bounce">00:00</span>` : formatTime(timer.currentTime, isStopwatch)}
                 </div>
                 
-                ${timer.isFinished ? `
-                    <div class="text-center text-rose-300 text-xs font-bold uppercase tracking-widest mb-4 animate-pulse">¡Tiempo Terminado!</div>
-                ` : ''}
+                ${timer.isFinished ? `<div class="text-center text-rose-300 text-xs font-bold uppercase tracking-widest mb-4 animate-pulse">¡Tiempo Terminado!</div>` : ''}
 
-                <!-- Laps Area (Stopwatch Only) -->
                 ${isStopwatch ? `
                 <div class="bg-slate-950 rounded-lg mb-4 flex-1 flex flex-col border border-slate-800 overflow-hidden min-h-[140px] max-h-[240px]">
-                     <!-- Header Fijo -->
                      <div class="bg-slate-950 p-2 border-b border-slate-800 z-10 shadow-sm shrink-0">
                         <div class="flex justify-between text-[10px] text-slate-500 uppercase font-mono px-2">
-                            <span class="w-6">#</span>
-                            <span class="flex-1 text-right">Vuelta</span>
-                            <span class="flex-1 text-right">Total</span>
+                            <span class="w-6">#</span><span class="flex-1 text-right">Vuelta</span><span class="flex-1 text-right">Total</span>
                         </div>
                      </div>
-                     <!-- Body con Scroll -->
                      <div class="overflow-y-auto flex-1 scrollbar-hide p-2 relative bg-slate-950/50">
                         ${timer.laps && timer.laps.length > 0 ? `
                             <div class="space-y-1">
@@ -479,57 +680,39 @@ function renderTimers() {
                                     <span class="w-6 text-slate-500 font-bold">${timer.laps.length - i}</span>
                                     <span class="flex-1 text-right text-cyan-400 font-medium">${formatLapTime(lap.split)}</span>
                                     <span class="flex-1 text-right font-medium">${formatLapTime(lap.total)}</span>
-                                </div>
-                                `).join('')}
+                                </div>`).join('')}
                             </div>
-                        ` : `
-                            <div class="h-full flex flex-col items-center justify-center text-slate-600 space-y-2 opacity-60">
-                                <i data-lucide="flag" class="w-6 h-6"></i>
-                                <span class="text-xs">No hay vueltas registradas</span>
-                            </div>
-                        `}
+                        ` : `<div class="h-full flex flex-col items-center justify-center text-slate-600 space-y-2 opacity-60"><i data-lucide="flag" class="w-6 h-6"></i><span class="text-xs">No hay vueltas</span></div>`}
                     </div>
-                </div>
-                ` : `<div class="flex-1"></div>`}
+                </div>` : `<div class="flex-1"></div>`}
 
-                <!-- Controles -->
                 <div class="flex justify-center gap-3 mt-auto shrink-0 pt-2 border-t border-slate-800/50">
-                    
                     ${timer.isFinished ? `
-                        <!-- Controles de Alarma Activa -->
                          <button onclick="resetTimer(${timer.id})" class="flex-1 py-2 bg-slate-700 hover:bg-slate-600 rounded-lg font-medium flex items-center justify-center gap-2 text-white transition-colors">
                             <i data-lucide="rotate-ccw" class="w-4 h-4"></i> Reiniciar
                         </button>
-                        
                         <button onclick="addMinuteToTimer(${timer.id})" class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg font-bold flex items-center justify-center gap-2 transition-colors">
                             <i data-lucide="plus" class="w-4 h-4"></i> 1 Min
                         </button>
-                    
                     ` : `
-                        <!-- Controles Normales -->
-                        <button onclick="toggleTimer(${timer.id})" class="${controlBtnSize} rounded-full shadow-lg transition-transform active:scale-95 text-slate-900 ${playBtnClass}" title="${timer.isRunning ? 'Pausar' : 'Iniciar'}">
-                            <i data-lucide="${playIcon}" class="${iconSize} fill-current"></i>
+                        <button onclick="toggleTimer(${timer.id})" class="p-3 rounded-full shadow-lg transition-transform active:scale-95 text-slate-900 ${playBtnClass}" title="${timer.isRunning ? 'Pausar' : 'Iniciar'}">
+                            <i data-lucide="${playIcon}" class="w-5 h-5 fill-current"></i>
                         </button>
-                        
                         ${isStopwatch ? `
-                        <button onclick="recordLap(${timer.id})" class="${controlBtnSize} rounded-full bg-slate-700 hover:bg-slate-600 ${timer.isRunning ? 'text-cyan-400' : 'text-white'} transition-colors disabled:opacity-50 disabled:cursor-not-allowed" ${!timer.isRunning ? 'disabled' : ''} title="Registrar Vuelta">
-                            <i data-lucide="flag" class="${iconSize}"></i>
-                        </button>
-                        ` : ''}
-
-                        <button onclick="initiateReset(${timer.id})" class="${controlBtnSize} rounded-full bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors" title="Reiniciar">
-                            <i data-lucide="rotate-ccw" class="${iconSize}"></i>
+                        <button onclick="recordLap(${timer.id})" class="p-3 rounded-full bg-slate-700 ${timer.isRunning ? 'hover:bg-cyan-500 hover:text-white text-cyan-400' : 'hover:bg-slate-600 text-white'} transition-colors disabled:opacity-50" ${!timer.isRunning ? 'disabled' : ''} title="Registrar Vuelta">
+                            <i data-lucide="flag" class="w-5 h-5"></i>
+                        </button>` : ''}
+                        <button onclick="initiateReset(${timer.id})" class="p-3 rounded-full bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors" title="Reiniciar">
+                            <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
                         </button>
                     `}
                 </div>
             </div>
-        </div>
-        `;
+        </div>`;
     }).join('');
 
-    // Attach Drag & Drop Events
-    const draggables = document.querySelectorAll('.timer-card');
-    draggables.forEach(item => {
+    // Re-attach drag events
+    document.querySelectorAll('.timer-card').forEach(item => {
         item.addEventListener('dragstart', handleDragStart, false);
         item.addEventListener('dragenter', handleDragEnter, false);
         item.addEventListener('dragover', handleDragOver, false);
@@ -541,15 +724,20 @@ function renderTimers() {
     lucide.createIcons();
 }
 
-// --- Acciones de Usuario ---
+// --- User Actions ---
 function toggleTimer(id) {
     const t = timers.find(x => x.id === id);
     if (t) {
         if (!t.isRunning) {
             t.lastTick = Date.now();
+            t.isRunning = true;
+            // Asegurarse de que el worker esté activo
+            timerWorker.postMessage('start');
+        } else {
+            t.isRunning = false;
         }
-        t.isRunning = !t.isRunning;
         renderTimers();
+        saveData(); // Guardar estado play/pause
     }
 }
 
@@ -559,23 +747,16 @@ function recordLap(id) {
         const totalTime = t.currentTime;
         const lastLapTotal = t.laps.length > 0 ? t.laps[t.laps.length - 1].total : 0;
         const splitTime = totalTime - lastLapTotal;
-
-        t.laps.push({
-            id: Date.now(),
-            total: totalTime,
-            split: splitTime
-        });
-        
+        t.laps.push({ id: Date.now(), total: totalTime, split: splitTime });
         playLapSound();
         renderTimers();
+        saveData();
     }
 }
 
-// --- Manejo de Reset Seguro ---
 function initiateReset(id) {
     const t = timers.find(x => x.id === id);
     if (!t) return;
-
     if (t.mode === 'stopwatch') {
         timerToResetId = id;
         document.getElementById('reset-modal').classList.remove('hidden');
@@ -588,11 +769,8 @@ function closeResetModal() {
     document.getElementById('reset-modal').classList.add('hidden');
     timerToResetId = null;
 }
-
 function confirmReset() {
-    if (timerToResetId) {
-        resetTimer(timerToResetId);
-    }
+    if (timerToResetId) resetTimer(timerToResetId);
     closeResetModal();
 }
 
@@ -603,11 +781,9 @@ function resetTimer(id) {
         t.isRunning = false;
         t.isFinished = false;
         t.laps = [];
-        
-        // Stop specific alarm
         stopAlarmForTimer(id);
-        
         renderTimers();
+        saveData();
     }
 }
 
@@ -615,14 +791,13 @@ function addMinuteToTimer(id) {
     const t = timers.find(x => x.id === id);
     if (t) {
         t.currentTime += 60000;
-        // Opcional: ¿aumentar duración original? Por ahora solo añadimos tiempo extra.
-        // t.duration += 60000; 
         t.isFinished = false;
         t.isRunning = true;
         t.lastTick = Date.now();
-        
         stopAlarmForTimer(id);
+        timerWorker.postMessage('start');
         renderTimers();
+        saveData();
     }
 }
 
@@ -630,61 +805,47 @@ function deleteTimer(id) {
     stopAlarmForTimer(id);
     timers = timers.filter(x => x.id !== id);
     renderTimers();
+    saveData();
 }
 
-// --- Lógica del Modal Add/Edit ---
+// --- Modal Add/Edit ---
 function openAddModal() {
     timerToEditId = null;
-    // document.getElementById('modal-title').innerText = "Nuevo Cronómetro"; // Title is static now
     document.getElementById('btn-save-timer').innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> <span>Comenzar</span>';
-    
     document.getElementById('add-modal').classList.remove('hidden');
-    // Reset fields
     document.getElementById('input-label').value = '';
     document.getElementById('input-sound').value = 'classic';
     document.getElementById('input-h').value = 0;
     document.getElementById('input-m').value = 5;
     document.getElementById('input-s').value = 0;
     
-    // Unlock mode buttons
     document.getElementById('btn-mode-timer').disabled = false;
     document.getElementById('btn-mode-stopwatch').disabled = false;
     
-    // Update counts in buttons
     const timerCount = timers.filter(t => t.mode === 'timer').length;
     const stopwatchCount = timers.filter(t => t.mode === 'stopwatch').length;
-
-    const btnTimer = document.getElementById('btn-mode-timer');
-    const btnStopwatch = document.getElementById('btn-mode-stopwatch');
-
-    btnTimer.innerHTML = `<i data-lucide="hourglass" class="w-4 h-4"></i> <span>Cuenta Regresiva (${timerCount})</span>`;
-    btnStopwatch.innerHTML = `<i data-lucide="watch" class="w-4 h-4"></i> <span>Cronómetro (${stopwatchCount})</span>`;
     
+    document.getElementById('btn-mode-timer').innerHTML = `<i data-lucide="hourglass" class="w-4 h-4"></i> <span>Cuenta Regresiva (${timerCount})</span>`;
+    document.getElementById('btn-mode-stopwatch').innerHTML = `<i data-lucide="watch" class="w-4 h-4"></i> <span>Cronómetro (${stopwatchCount})</span>`;
     lucide.createIcons();
 
-    // Check if stopwatch limit reached (1 max)
     if (stopwatchCount >= 1) {
-        btnStopwatch.disabled = true;
-        btnStopwatch.title = "Ya tienes un cronómetro activo (Máximo 1)";
-        setMode('timer'); // Force Timer mode
+        document.getElementById('btn-mode-stopwatch').disabled = true;
+        setMode('timer');
     } else {
-        btnStopwatch.disabled = false;
-        btnStopwatch.title = "Modo Cronómetro";
-        setMode('timer'); // Default to Timer
+        document.getElementById('btn-mode-stopwatch').disabled = false;
+        setMode('timer');
     }
 }
 
 function editTimer(id) {
     const t = timers.find(x => x.id === id);
-    if (!t || t.mode !== 'timer') return; // Safety check
-    
+    if (!t || t.mode !== 'timer') return;
     timerToEditId = id;
-    // document.getElementById('modal-title').innerText = "Editar Temporizador"; // Title is static now
     document.getElementById('btn-save-timer').innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> <span>Guardar Cambios</span>';
     lucide.createIcons();
     document.getElementById('add-modal').classList.remove('hidden');
     
-    // Populate fields
     document.getElementById('input-label').value = t.label;
     document.getElementById('input-sound').value = t.sound || 'classic';
     
@@ -697,15 +858,12 @@ function editTimer(id) {
     document.getElementById('input-m').value = m;
     document.getElementById('input-s').value = s;
     
-    // Lock mode buttons (cannot change type while editing)
     setMode('timer');
     document.getElementById('btn-mode-timer').disabled = true;
     document.getElementById('btn-mode-stopwatch').disabled = true;
 }
 
-function closeAddModal() {
-    document.getElementById('add-modal').classList.add('hidden');
-}
+function closeAddModal() { document.getElementById('add-modal').classList.add('hidden'); }
 
 function setMode(mode) {
     newTimerConfig.mode = mode;
@@ -713,16 +871,20 @@ function setMode(mode) {
     const btnStop = document.getElementById('btn-mode-stopwatch');
     const durInputs = document.getElementById('duration-inputs');
     const soundConfig = document.getElementById('sound-config-container');
-
     const baseClass = "flex-1 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-2";
+    
+    const theme = themes[currentTheme] || themes['default'];
 
     if (mode === 'timer') {
-        btnTimer.className = `${baseClass} bg-indigo-600 text-white shadow`;
+        btnTimer.className = `${baseClass} ${theme.btnBg} text-white shadow`;
         btnStop.className = `${baseClass} text-slate-400 hover:text-slate-200`;
         durInputs.style.display = 'block';
         soundConfig.style.display = 'block';
     } else {
-        btnStop.className = `${baseClass} bg-cyan-600 text-slate-900 shadow`;
+        // Para stopwatch usamos un color fijo o el del tema? 
+        // El diseño original usaba Cyan para stopwatch. Mantengámoslo diferenciado o usemos el tema.
+        // Usemos el tema para consistencia total como pidió el usuario.
+        btnStop.className = `${baseClass} ${theme.btnBg} text-white shadow`;
         btnTimer.className = `${baseClass} text-slate-400 hover:text-slate-200`;
         durInputs.style.display = 'none';
         soundConfig.style.display = 'none';
@@ -745,54 +907,60 @@ function saveTimer() {
     const totalSeconds = (h * 3600) + (m * 60) + s;
     const durationMs = totalSeconds * 1000;
 
-    // Edit Existing Timer
     if (timerToEditId) {
         const t = timers.find(x => x.id === timerToEditId);
         if (t) {
             t.label = label || 'Temporizador';
             t.sound = sound;
             t.duration = durationMs;
-            t.currentTime = durationMs; // Reset time to new duration
-            t.isFinished = false; // Reset finished state
-            stopAlarmForTimer(t.id); // Stop alarm if it was ringing
+            t.currentTime = durationMs;
+            t.isFinished = false;
+            stopAlarmForTimer(t.id);
         }
-    } 
-    // Create New Timer
-    else {
+    } else {
         const mode = newTimerConfig.mode;
-        
-        // --- Validaciones de Reglas ---
         const currentStopwatches = timers.filter(t => t.mode === 'stopwatch').length;
-        const totalTimers = timers.length;
-
-        if (totalTimers >= 5) return; 
-        if (mode === 'stopwatch' && currentStopwatches >= 1) return;
-        // -----------------------------
-
-        const initialTime = mode === 'timer' ? durationMs : 0;
-        const finalLabel = label || (mode === 'timer' ? 'Temporizador' : 'Cronómetro');
+        if (timers.length >= 5 || (mode === 'stopwatch' && currentStopwatches >= 1)) return;
 
         timers.push({
             id: Date.now(),
-            label: finalLabel,
+            label: label || (mode === 'timer' ? 'Temporizador' : 'Cronómetro'),
             mode: mode,
             sound: mode === 'stopwatch' ? null : sound, 
             duration: durationMs,
-            currentTime: initialTime,
+            currentTime: mode === 'timer' ? durationMs : 0,
             lastTick: Date.now(),
             isRunning: false,
             isFinished: false,
             laps: [] 
         });
     }
-
     closeAddModal();
     renderTimers();
+    saveData();
 }
 
-// --- Inicialización ---
+// --- Init ---
 document.addEventListener('DOMContentLoaded', () => {
-    requestAnimationFrame(updateTimers);
-    renderTimers();
+    // Iniciar Worker de inmediato
+    timerWorker.postMessage('start');
+    
+    // Cargar datos del servidor local
+    loadData();
+    
+    // Solicitar permisos de notificación (amable)
+    if ("Notification" in window && Notification.permission !== "granted" && Notification.permission !== "denied") {
+        // Podríamos mostrar un botón para pedirlo explícitamente, pero por ahora lo pedimos suavemente.
+        // requestNotificationPermission(); 
+        // Mejor dejarlo a una acción de usuario si es posible, o llamarlo aquí.
+    }
+    
     lucide.createIcons();
 });
+
+// Pedir permiso al primer click en la página para no ser intrusivos
+document.addEventListener('click', () => {
+    if ("Notification" in window && Notification.permission === "default") {
+        Notification.requestPermission();
+    }
+}, { once: true });
